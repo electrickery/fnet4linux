@@ -14,6 +14,8 @@ And added a makefile.
 What remains is checking the other netPC/FlexNet commands for proper working with
 more images and cleanup.
 
-And update the documentation!
+And update the documentation! In the meantime, here an example:
+
+    flexnet -d /dev/ttyUSB2 -s 9600 -v -0 disks/FLEXCMI.DSDD80-5f2.IMA -1 'disks/EDITSRC.DSK' -2 'disks/GAMES.DSK'
 
 fjkraan@electrickery.nl
