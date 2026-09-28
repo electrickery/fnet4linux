@@ -1,13 +1,22 @@
 # fnet4linux
 
-Based on Michael Wurtz' code.
+Based on Michael Wurtz' Fnet4linux code.
+
+# What is it?
+
+Fnet4linux is an implementation of the NetPC/FlexNet protocol designed by Bjarne Bäckström 
+and Ron Anderson. Implementations of this protocol allow a floppy disk interface to be replaced
+by a serial port. The contents of the floppy is a file on a PC. The protocol is noet very 
+demanding and can be implemented on an original Arduino and SD-card, while still support four 
+disk drives.
 
 ## Summary of changes to make the code multi-disk:
 
-By moving some image related variables to a struct and add four of those to an
-array, the original code becomes multi-disk. The single argument for the disk-image
+* By moving some image related variables to a struct and add four of those to an
+array, the original code becomes multi-disk. 
+* The single argument for the disk-image
 is replaced by up to four options '-0, -1, -2 and -3) each with an argument.
-And added a makefile.
+* Added a makefile.
 
 ## ToDo
 
