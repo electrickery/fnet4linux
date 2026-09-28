@@ -19,7 +19,6 @@
 	 along with this program; if not, write to the Free Software
 	 Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <termios.h>
@@ -33,6 +32,7 @@
 #include <time.h>
 #include <getopt.h>
 #include <dirent.h>
+#include <stdarg.h>
 
 // Sector size for Flex floppy
 #define SECSIZE 256
@@ -53,12 +53,14 @@ int ready;				// Disk image ready ?
 int readonly;			// Disk image readonly ?	
 char curdir[256];		// Current directory
 
+int exitOnLoadComplete = 0; // For testing only
+
 static int verbose = 0;
 
 //char filename[256];		// flex disk image path
 //char *diskname;			// flex disk name
 //int fd;					// file handler
-//uint8_t bloc[SECSIZE];	// current sector (for reading or writing)
+uint8_t bloc[SECSIZE];	// current sector (for reading or writing)
 //uint8_t nbtrk;			// nb of tracks on disk
 //uint8_t nbsec;			// nb of sectors by track
 //uint8_t track0l;		// nb of sectors on track 0
@@ -67,10 +69,16 @@ typedef struct {
     char filename[256];		// flex disk image path
     char *diskname;			// flex disk name
     int fd;					// file handler
-    uint8_t bloc[SECSIZE];	// current sector (for reading or writing)
+//    uint8_t bloc[SECSIZE];	// current sector (for reading or writing)
     uint8_t nbtrk;			// nb of tracks on disk
     uint8_t nbsec;			// nb of sectors by track
     uint8_t track0l;		// nb of sectors on track 0
 } imageFile_t;
 
-imageFile_t imageFile[4]; 
+imageFile_t imageFile[4];  // declare an array with four imageFile_t structs
+
+int currentDrive = 0;       // specify the drive currently active
+
+// forward declarations
+void loop();
+void msg(const char *fmt, ...);

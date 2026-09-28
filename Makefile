@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -Werror -g
+CFLAGS  = -Wall -Wextra -Werror -Wpedantic -g
 TARGET  = flexnet
 LIB_NAME = 
 SRC_DIR = .
@@ -22,6 +22,15 @@ clean:
 	rm -rf $(OBJ_DIR)/*.o $(TARGET)
 
 test: $(TARGET)
+	@echo " #### Test1 ####"
 	./$(TARGET) -h -V
-#	./$(TARGET) -d /dev/ttyUSB0 -s 9600 fnlinux.dsk
+	@echo " #### Test2 ####"
+	./$(TARGET) -t -d /dev/ttyUSB0 -s 9600 fnlinux.dsk
+	@echo " #### Test3 ####"
+	./$(TARGET) -t -d /dev/ttyUSB0 -s 9600 -0 ./fnlinux.dsk
+	@echo " #### Test4 ####"
+	./$(TARGET) -t -d /dev/ttyUSB0 -s 9600 \
+	    -0 ./fnlinux.dsk \
+	    -1 ./fnlinux2.dsk \
+	    -2 ./fnlinux2.dsk
 	@echo "Tests passed"

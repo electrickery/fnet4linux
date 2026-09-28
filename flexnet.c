@@ -29,13 +29,14 @@ void usage( char *cmd) {
 	fprintf( stderr, " -d <device> : serial line to use\n");
 	fprintf( stderr, " -s <speed> : baudrate to use\n");
 	fprintf( stderr, " -v : print requests to the server and reply (debug)\n");
+    fprintf( stderr, " -t : for testing only; exit(0) after loading complete\n");
 }
 
 // Convert track/sector to bloc number on the disc image
 
 int ts2blk( uint8_t ntrk, uint8_t nsec) {
-	if (ntrk > imageFile[0].nbtrk || 
-        nsec > imageFile[0].nbsec || 
+	if (ntrk > imageFile[currentDrive].nbtrk || 
+        nsec > imageFile[currentDrive].nbsec || 
         (nsec == 0 && ntrk != 0)) {
 		return( -1);
 	}
@@ -46,7 +47,7 @@ int ts2blk( uint8_t ntrk, uint8_t nsec) {
 			return (nsec - 1);
 		}
 	} else {
-		return imageFile[0].track0l + (ntrk - 1) * imageFile[0].nbsec + nsec - 1;
+		return imageFile[currentDrive].track0l + (ntrk - 1) * imageFile[currentDrive].nbsec + nsec - 1;
 	}
 }
 
@@ -79,7 +80,7 @@ int getname( uint8_t *pos, char *name, int dot) {
 
 // Analyse the validity of the image disk to load
 
-int load_dsk( char *name) {
+int load_dsk(char *name, int driveNo) {
 
 	struct stat dsk_stat;
 	int size;
@@ -88,44 +89,46 @@ int load_dsk( char *name) {
 	int volnum;
 	int last_trk_sec;	
 	int freesec; 
+    
+    msg(" load_dsk: Drive: %d, %s\n", driveNo, name);
 
-	strncpy( imageFile[0].filename, name, 256);
-	imageFile[0].diskname = strrchr( imageFile[0].filename, '/');
-	if (imageFile[0].diskname == NULL)
-		imageFile[0].diskname = imageFile[0].filename;
+	strncpy(imageFile[driveNo].filename, name, 256);
+	imageFile[driveNo].diskname = strrchr( imageFile[driveNo].filename, '/');
+	if (imageFile[driveNo].diskname == NULL)
+		imageFile[driveNo].diskname = imageFile[driveNo].filename;
 	else
-		imageFile[0].diskname++;
+		imageFile[driveNo].diskname++;
 
-	if (stat( imageFile[0].filename, &dsk_stat)) {
+	if (stat( imageFile[driveNo].filename, &dsk_stat)) {
 		if (verbose)
-			perror( imageFile[0].filename); 
+			perror( imageFile[driveNo].filename); 
 		return -1;
 	}
 
 	// Open disk image
-	imageFile[0].diskname = strrchr( imageFile[0].filename, '/');
-	if (imageFile[0].diskname == NULL)
-		imageFile[0].diskname = imageFile[0].filename;
+	imageFile[driveNo].diskname = strrchr( imageFile[driveNo].filename, '/');
+	if (imageFile[driveNo].diskname == NULL)
+		imageFile[driveNo].diskname = imageFile[driveNo].filename;
 	else
-		imageFile[0].diskname++;
+		imageFile[driveNo].diskname++;
 	size = dsk_stat.st_size;
 	if (dsk_stat.st_mode & S_IWUSR) {
-		if ((imageFile[0].fd = open( imageFile[0].filename, O_RDWR)) < 0) {
+		if ((imageFile[driveNo].fd = open( imageFile[driveNo].filename, O_RDWR)) < 0) {
 			if (verbose)
-				perror( imageFile[0].diskname);
+				perror(imageFile[driveNo].diskname);
 			return -1;
 		}
 		readonly = 0;
 	} else {
-		if ((imageFile[0].fd = open( imageFile[0].filename, O_RDONLY)) < 0 ) {
+		if ((imageFile[driveNo].fd = open( imageFile[driveNo].filename, O_RDONLY)) < 0 ) {
 			if (verbose)
-				perror( imageFile[0].diskname);
+				perror( imageFile[driveNo].diskname);
 			return -1;
 		}
 		readonly = 1;
 	}
-	lseek( imageFile[0].fd, SECSIZE*2, SEEK_SET);
-	if (read( imageFile[0].fd, imageFile[0].bloc, SECSIZE) != SECSIZE)
+	lseek( imageFile[driveNo].fd, SECSIZE*2, SEEK_SET);
+	if (read( imageFile[driveNo].fd, bloc, SECSIZE) != SECSIZE)
 		return -1;
 
 	nb_sectors = size / SECSIZE;
@@ -135,65 +138,64 @@ int load_dsk( char *name) {
 		return -1;
 	}
 
-	if (verbose)
-		printf( "Opening %s (%u sectors)\n", imageFile[0].diskname, nb_sectors);
+	msg( "Opening %s (%u sectors)\n", imageFile[driveNo].diskname, nb_sectors);
 
 	// Not a flex disk ?
-	if (getname( imageFile[0].bloc + 0x10, label, 0) < 0 || 
-                imageFile[0].bloc[0x26] == 0 ||
-                imageFile[0].bloc[0x27] == 0) {
+	if (getname( bloc + 0x10, label, 0) < 0 || 
+                bloc[0x26] == 0 ||
+                bloc[0x27] == 0) {
 		fprintf( stderr, "Not a valid Flex disk image: ");
 		return -1;
 	}
 
-	volnum = imageFile[0].bloc[0x1b]*256 + imageFile[0].bloc[0x1c];
+	volnum = bloc[0x1b]*256 + bloc[0x1c];
 	// Size of disk & free sector list
-	imageFile[0].nbtrk = imageFile[0].bloc[0x26];
-	imageFile[0].nbsec = imageFile[0].bloc[0x27];
-	freesec = imageFile[0].bloc[0x21]*256 + imageFile[0].bloc[0x22];
+	imageFile[driveNo].nbtrk = bloc[0x26];
+	imageFile[driveNo].nbsec = bloc[0x27];
+	freesec = bloc[0x21]*256 + bloc[0x22];
 
 	// Too much free sectors for the disk ?
-	if (freesec > imageFile[0].nbtrk * imageFile[0].nbsec && verbose)
-		printf( "Warning: Number of free sectors bigger than disk size\n");
+	if (freesec > imageFile[driveNo].nbtrk * imageFile[driveNo].nbsec && 
+        verbose)
+		msg("Warning: Number of free sectors bigger than disk size\n");
 
 	// Print info about the disk
-	if (verbose)
-		printf( "Flex Volume name: '%s', volume number %d (%d tracks, %d sectors/track)\n",
-			label, volnum, imageFile[0].nbtrk+1, imageFile[0].nbsec);
+	msg("Flex Volume name: '%s', volume number %d (%d tracks, %d sectors/track)\n",
+			label, volnum, imageFile[driveNo].nbtrk+1, imageFile[driveNo].nbsec);
 
 	// Try to guess disk geometry
-	if ((imageFile[0].nbtrk+1) * imageFile[0].nbsec == nb_sectors) {
-		if (verbose) {
-			printf( "Looks like a Single Density disk\n");
-		}
-		imageFile[0].track0l = imageFile[0].nbsec;
+	if ((imageFile[driveNo].nbtrk+1) * imageFile[driveNo].nbsec == nb_sectors) {
+		msg("Looks like a Single Density disk\n");
+		imageFile[driveNo].track0l = imageFile[driveNo].nbsec;
 	} else {
-		imageFile[0].track0l = nb_sectors - imageFile[0].nbtrk * imageFile[0].nbsec;
-		if ((imageFile[0].nbsec >= 36 && imageFile[0].track0l == 20) ||
-			(imageFile[0].nbsec == 18 && imageFile[0].track0l == 10) ||
-			(imageFile[0].track0l == imageFile[0].nbsec/2)) {
-			if (verbose)
-	  			printf ( "Looks like a Double Density disk with Single Density track 0 of %d sectors\n",
-	    			imageFile[0].track0l);
-		} else if (imageFile[0].track0l > imageFile[0].nbsec) {
+		imageFile[driveNo].track0l = nb_sectors - imageFile[driveNo].nbtrk * imageFile[driveNo].nbsec;
+		if ((imageFile[driveNo].nbsec >= 36 && imageFile[driveNo].track0l == 20) ||
+			(imageFile[driveNo].nbsec == 18 && imageFile[driveNo].track0l == 10) ||
+			(imageFile[driveNo].track0l == imageFile[driveNo].nbsec/2)) {
+			msg("Looks like a Double Density disk with Single Density track 0 of %d sectors\n",
+	    			imageFile[driveNo].track0l);
+		} else if (imageFile[driveNo].track0l > imageFile[driveNo].nbsec) {
 			// Weird geometry... but can happen when disks are in EEPROM
-			if (verbose)
-	  			printf( "Unknown geometry: %d tracks of %d sectors + first track of %d sectors !\n",
-	    			imageFile[0].nbtrk, imageFile[0].nbsec, imageFile[0].track0l);
-			imageFile[0].track0l = imageFile[0].nbsec;
-			imageFile[0].nbtrk++;
-			last_trk_sec = nb_sectors - (imageFile[0].nbtrk-1) * imageFile[0].nbsec - imageFile[0].track0l;
-			if (verbose)    
-	  			printf( " => Using normal %d sector track 0, add a %d%s incomplete track of %d sectors\n",
-	    			imageFile[0].track0l, imageFile[0].nbtrk, "th", last_trk_sec);
-		} else if (imageFile[0].track0l > imageFile[0].nbsec/2 && imageFile[0].track0l < imageFile[0].nbsec) {
-			if(verbose)
-	  			printf ( "Looks like a Double Density disk with Single Density track 0 of %d sectors\n",
-	    			imageFile[0].track0l);
+			msg("Unknown geometry: %d tracks of %d sectors + first track of %d sectors !\n",
+	    			imageFile[driveNo].nbtrk, 
+                    imageFile[driveNo].nbsec, 
+                    imageFile[driveNo].track0l);
+			imageFile[driveNo].track0l = imageFile[driveNo].nbsec;
+			imageFile[driveNo].nbtrk++;
+			last_trk_sec = nb_sectors - (imageFile[driveNo].nbtrk-1) * imageFile[driveNo].nbsec - imageFile[driveNo].track0l;
+			msg(" => Using normal %d sector track 0, add a %d%s incomplete track of %d sectors\n",
+	    			imageFile[driveNo].track0l, 
+                    imageFile[driveNo].nbtrk, "th", 
+                    last_trk_sec);
+		} else if (imageFile[driveNo].track0l > imageFile[driveNo].nbsec/2 && 
+                    imageFile[driveNo].track0l < imageFile[driveNo].nbsec) {
+			msg("Looks like a Double Density disk with Single Density track 0 of %d sectors\n",
+	    			imageFile[driveNo].track0l);
 		} else {
-			imageFile[0].nbtrk -= (((imageFile[0].nbtrk * imageFile[0].nbsec - nb_sectors) / imageFile[0].nbsec) + 1);
+			imageFile[driveNo].nbtrk -= 
+                (((imageFile[driveNo].nbtrk * imageFile[driveNo].nbsec - nb_sectors) / imageFile[driveNo].nbsec) + 1);
 			// This is generaly no good, trying to guess end of track 0
-			fprintf( stderr, "ERROR: Disk image too small... unusual geometry or truncated ?\n");
+			fprintf(stderr, "ERROR: Disk image too small... unusual geometry or truncated ?\n");
 			return -1;
 		}
 	}
@@ -233,58 +235,60 @@ void sndblk() {
 	int drv, msb, lsb, chks;		// For checksum computing and transmitting
 	int retval;
 	int pos;
-	uint8_t nsec, ntrk;
+	int nsec, ntrk;
 
 	drv = fgetc( serial);
 	ntrk = fgetc( serial);
 	nsec = fgetc( serial);
 	retval = 1;
+    currentDrive = drv;
 
 	if (ready == 0) {		// force checksum error if disk not ready
-		if (verbose)
-			printf( "No disk mounted, force CRC error!\n");
+		msg("No disk mounted, force CRC error!\n");
 		for (int i = 0; i < 258; i++)
 			fputc( 0, serial);
 		fputc( 1, serial);
-		if ((retval = fgetc( serial)) != NAK && verbose)
-				printf ("... unexpected return value : 0x%02X\n", retval);
+		if ((retval = fgetc( serial)) != NAK)
+            msg("... unexpected return value : 0x%02X\n", retval);
 		return ;
 	}
 
 	if ((pos = SECSIZE * ts2blk( ntrk, nsec)) < 0) {
 		retval = 0;
 	} else {
-		if (lseek( imageFile[0].fd, pos, SEEK_SET) != pos)
+		if (lseek( imageFile[currentDrive].fd, pos, SEEK_SET) != pos)
 			retval = 0;
-		if (read( imageFile[0].fd, imageFile[0].bloc, SECSIZE) != SECSIZE)
+		if (read( imageFile[currentDrive].fd, bloc, SECSIZE) != SECSIZE)
 			retval = 0;
 	}
 	if (retval == 0) {
 		for( int i = 0; i< 256; i++) 
-			imageFile[0].bloc[i] = 0;
+			bloc[i] = 0;
     }
-	if (verbose) {
-		if (retval) 
-			printf( "Bloc dsk %d [0x%02X/0x%02X] (pos = %d) read", drv, ntrk, nsec, pos);
-		else
-			printf( "Fail to read bloc dsk %d [0x%02X/0x%02X] (pos = %d)", drv, ntrk, nsec, pos);
+    if (retval) {
+        msg("Bloc dsk %d [0x%02X/0x%02X] (pos = %d) read", 
+            drv, ntrk, nsec, pos);
+    } else {
+        msg("Fail to read bloc dsk %d [0x%02X/0x%02X] (pos = %d)", 
+            drv, ntrk, nsec, pos);
     }
-	chks = checksum( imageFile[0].bloc);
+
+	chks = checksum( bloc);
 	lsb = chks & 0xFF;
 	msb = (chks >> 8) & 0xFF;
 	for( int i = 0; i< 256; i++)
-		fputc( imageFile[0].bloc[i], serial);
+		fputc( bloc[i], serial);
 	fputc( msb, serial);
 	fputc( lsb, serial);
 
 	retval = fgetc( serial);
 	if (verbose) {
 		if (retval == NAK)
-			printf( "... transmission failed\n");
+			msg("... transmission failed\n");
 		else if (retval == ACK)
-			printf ("... transmission OK\n");
+			msg("... transmission OK\n");
 		else
-			printf ("... return value not expected : 0x%02X\n", retval);
+			msg("... return value not expected : 0x%02X\n", retval);
     }
 }
 
@@ -294,44 +298,47 @@ int rcvblk() {
 	int msb, lsb, chks;		// For checksum computing and transmitting
 	int retval;
 	int pos;
-	uint8_t nsec, ntrk;
 	int i;
 
-//	int drv = fgetc( serial);
-	ntrk = fgetc( serial);
-	nsec = fgetc( serial);
+	int drv = fgetc( serial);
+	int ntrk = fgetc( serial);
+	int nsec = fgetc( serial);
 	pos = SECSIZE * ts2blk( ntrk, nsec);
+    currentDrive = drv;
 
 	for (i = 0; i <256; i++)
-		imageFile[0].bloc[i] = fgetc( serial);
+		bloc[i] = fgetc( serial);
 	msb = fgetc( serial);
 	lsb = fgetc( serial);
 	retval = 1;
 
-	if ((chks = checksum( imageFile[0].bloc)) == msb * 256 + lsb) {
+	if ((chks = checksum( bloc)) == msb * 256 + lsb) {
 		if (pos < 0)
 			retval = 0;
 		else {
 			if (ready == 0)
 				return (retval = 0);
-			if (lseek( imageFile[0].fd, pos, SEEK_SET) != pos)
+			if (lseek( imageFile[currentDrive].fd, pos, SEEK_SET) != pos)
 				retval = 0;
-			if (write( imageFile[0].fd, imageFile[0].bloc, SECSIZE) != SECSIZE)
+			if (write( imageFile[currentDrive].fd, bloc, SECSIZE) != SECSIZE)
 				retval = 0;
 		}
 	} else {
 		retval = 0;
 		if (verbose) {
-			printf( "Bad checksum (0x%04X instead of 0x%04X)\n", msb * 256 + lsb, chks);
+			msg( "Bad checksum (0x%04X instead of 0x%04X)\n", 
+                msb * 256 + lsb, chks);
 			for (i = 0; i< 256; i++)
-				printf ("%c0x%02x", i%16?' ':'\n', imageFile[0].bloc[i]);
+				printf ("%c0x%02x", i%16?' ':'\n', bloc[i]);
 		}
 	}
 	if (verbose) {
 		if (retval)
-			printf( "Bloc [0x%02X/0x%02X] (pos = %d) written\n", ntrk, nsec, pos);
+			msg( "Bloc dsk %d [0x%02X/0x%02X] (pos = %d) written\n", 
+                drv, ntrk, nsec, pos);
 		else
-			printf( "Fail to write bloc [0x%02X/0x%02X] (pos = %d)\n", ntrk, nsec, pos);
+			msg( "Fail to write bloc dsk %d [0x%02X/0x%02X] (pos = %d)\n",
+                drv, ntrk, nsec, pos);
     }
 	return retval;
 }
@@ -342,35 +349,33 @@ int chngd() {
 	int retval = 0;
 	if (chdir( param) < 0) {
 		retval = 0;
-		if (verbose)
-			printf( "Cannot change directory to %s\n", param);
+		msg( "Cannot change directory to %s\n", param);
 	} else {
 		getcwd( curdir, 255);
 		retval = 1;
-		if (verbose)
-			printf( "Changing directory to %s\n", curdir);
+		msg( "Changing directory to %s\n", curdir);
 	}
 	return retval;
 }
 
 // RMOUNT command
 
-int rmount() {
+int rmount(int drive) {
 	char rfilename[256];
 
-	close( imageFile[0].fd);
-	if (verbose)
-		printf( "closing %s\n", imageFile[0].diskname);
+    if (imageFile[currentDrive].fd != -1) {
+        close(imageFile[currentDrive].fd);
+        msg("closing %d: %s\n", drive, imageFile[currentDrive].diskname);
+    }
 
 	ready = 1;
-	strncpy( rfilename, param, 255);
-	strncat( rfilename, ".DSK", 255);	// Rmount don't put the extension
-	if (load_dsk( rfilename) < 0) {
-		if (verbose)
-			printf( "trying with lowercase...\n");
-		strncpy( rfilename, param, 255);
-		strncat( rfilename, ".dsk", 255);
-		if (load_dsk( rfilename) < 0)
+	strncpy(rfilename, param, 255);
+	strncat(rfilename, ".DSK", 255);	// Rmount don't put the extension
+	if (load_dsk(rfilename, drive) < 0) {
+		msg("trying with lowercase...\n");
+		strncpy(rfilename, param, 255);
+		strncat(rfilename, ".dsk", 255);
+		if (load_dsk(rfilename, drive) < 0)
 			ready = 0;
 	}
 	return ready;
@@ -386,38 +391,37 @@ void lstdsk() {
 
 	getparam();
 	
-	if (verbose)
-		printf( "RDIR( %s) command\n", param);
+	msg("RDIR(%s) command\n", param);
 				
-	fputc( CR, serial);
-	fputc( LF, serial);
+	fputc(CR, serial);
+	fputc(LF, serial);
 
-	dirp = opendir( curdir);
+	dirp = opendir(curdir);
 	endlist = 1;
-	while ((entry = readdir( dirp)) != NULL) {
-		if (strcasecmp( (entry->d_name)+strlen(entry->d_name)-3, "DSK") != 0) 
+	while ((entry = readdir(dirp)) != NULL) {
+		if (strcasecmp((entry->d_name)+strlen(entry->d_name)-3, "DSK") != 0) 
 			continue;
-		if (strcasestr( entry->d_name, param) != entry->d_name)
+		if (strcasestr(entry->d_name, param) != entry->d_name)
 			continue;
 		if ((reply = fgetc( serial)) != ' ') {
-			if (verbose && reply != ESC)
-				printf( "Unexpected command (0x%02X) while reading directory\n", reply);
+			if (reply != ESC)
+				msg("Unexpected command (0x%02X) while reading directory\n", 
+                    reply);
 			endlist = 0;
 			break;
 		}
-		if (verbose)
-			printf( "---> %s\n", entry->d_name);
-		fputs( entry->d_name, serial);
-		fputc( CR, serial);
-		fputc( LF, serial);
+		msg("---> %s\n", entry->d_name);
+		fputs(entry->d_name, serial);
+		fputc(CR, serial);
+		fputc(LF, serial);
 	}
 	if (endlist)
 		if ((reply = fgetc( serial)) != ' ')
-			if (verbose)
-				printf( "Unexpected command (0x%02X) while reading directory\n", reply);
+			msg("Unexpected command (0x%02X) while reading directory\n", 
+                    reply);
 
-	closedir( dirp);
-	fputc( ACK, serial);
+	closedir(dirp);
+	fputc(ACK, serial);
 }
 
 // RLIST command
@@ -429,47 +433,46 @@ void lstdir() {
 	int reply;
 	int endlist;
 
-	if (verbose)
-		printf( "RLIST command\n");
+	msg("RLIST command\n");
 				
 	getparam();
 	if ((reply = fgetc( serial)) != 0x20)
-		printf( "Bad char 0x%02X received...\n", reply);
+		printf("Bad char 0x%02X received...\n", reply);
 	else {
-		fputc( CR, serial);
-		fputc( LF, serial);
+		fputc(CR, serial);
+		fputc(LF, serial);
 	}
 
 	endlist = 1;
-	dirp = opendir( curdir);
+	dirp = opendir(curdir);
 	while ((entry = readdir( dirp)) != NULL) {
 		if (strcmp(entry->d_name, ".") * strcmp(entry->d_name, "..") == 0)
 			continue;
-		if (stat( entry->d_name, &statbuf) == -1) {
+		if (stat(entry->d_name, &statbuf) == -1) {
 			if (verbose)
-				perror( entry->d_name);
+				perror(entry->d_name);
 			continue;
 		}
-		if (S_ISDIR( statbuf.st_mode) == 0) 
+		if (S_ISDIR(statbuf.st_mode) == 0) 
 			continue;
 		if ((reply = fgetc( serial)) != 0x20) {
-			if (verbose && reply != ESC)
-				printf( "Unexpected command (0x%02X) while reading directory\n", reply);
+			if (reply != ESC)
+				msg("Unexpected command (0x%02X) while reading directory\n", 
+                    reply);
 			endlist = 0;
 			break;
 		}
-		if (verbose)
-			printf( "---> %s\n", entry->d_name);
-		fputs( entry->d_name, serial);
-		fputc( CR, serial);
-		fputc( LF, serial);
+		msg("---> %s\n", entry->d_name);
+		fputs(entry->d_name, serial);
+		fputc(CR, serial);
+		fputc(LF, serial);
 	}
 	if (endlist)
 		if ((reply = fgetc( serial)) != ' ')
-			if (verbose)
-				printf( "Unexpected command (0x%02X) while reading directory\n", reply);
-	closedir( dirp);
-	fputc( ACK, serial);
+			msg("Unexpected command (0x%02X) while reading directory\n", 
+                    reply);
+	closedir(dirp);
+	fputc(ACK, serial);
 }
 
 // Program starts here
@@ -477,15 +480,20 @@ void lstdir() {
 int main( int argc, char **argv)
 {
 	int opt;
-	char *name;
+//	char *name;
 //	struct stat dsk_stat;
-	int command;
 //	int flags;
 	struct termios linespec;
 	int idlnk;
+    
+    // Set initial state of disk images
+    imageFile[0].fd = -1;
+    imageFile[1].fd = -1;
+    imageFile[2].fd = -1;
+    imageFile[3].fd = -1;
 
 // Read parameters
-	while ((opt = getopt( argc, argv, "d:s:vh")) != -1) {
+	while ((opt = getopt( argc, argv, "d:s:0:1:2:3:vht")) != -1) {
 		switch (opt) {
 			case 'h':
 				usage( *argv);
@@ -495,88 +503,105 @@ int main( int argc, char **argv)
 				verbose = 1;
 				break;
 			case 'd':
-				strncpy( line, optarg, 31) ;
+				strncpy(line, optarg, 31) ;
 				break;
 			case 's':
-				sscanf( optarg, "%d", &speed);
+				sscanf(optarg, "%d", &speed);
+				break;
+            case '0':
+                load_dsk(optarg, 0);
+                break;
+            case '1':
+                load_dsk(optarg, 1);
+                break;
+            case '2':
+                load_dsk(optarg, 2);
+                break;
+            case '3':
+                load_dsk(optarg, 3);
+                break;
+			case 't':
+				exitOnLoadComplete = 1;
 				break;
 			default: /* unknown commands */
 				usage( *argv);
-				exit( 1);
+				exit(1);
 		}
 	}
 
 // Some sanitary checking on options
-	if (strlen( line) == 0) {
-		fprintf( stderr, "No serial line ?\n");
-		usage( *argv);
-		exit( 1);
+	if (strlen(line) == 0) {
+		fprintf(stderr, "No serial line ?\n");
+		usage(*argv);
+		exit(1);
 	}
 
 	if (speed == 0) {
-		fprintf( stderr, "No baudrate ?\n");
-		usage( *argv);
-		exit( 1);
+		fprintf(stderr, "No baudrate ?\n");
+		usage(*argv);
+		exit(1);
 	}
 
-	if((serial = fopen( line, "r+")) == NULL )
-		perror( line);
+	if((serial = fopen(line, "r+")) == NULL )
+		perror(line);
 
-	if ((idlnk = fileno( serial)) < 0)
-			perror( line);
+	if ((idlnk = fileno(serial)) < 0)
+			perror(line);
 
-	if (tcgetattr (idlnk, &linespec) < 0) {
-		perror ("ERROR getting current terminal's attributes");
-		exit( 1);
+	if (tcgetattr(idlnk, &linespec) < 0) {
+		perror("ERROR getting current terminal's attributes");
+		exit(1);
 	}
-	cfmakeraw( &linespec);
-	cfsetspeed( &linespec, speed);
+	cfmakeraw(&linespec);
+	cfsetspeed(&linespec, speed);
 		
-	if (tcsetattr (idlnk, TCSANOW, &linespec) < 0) {
+	if (tcsetattr(idlnk, TCSANOW, &linespec) < 0) {
 		perror ("ERROR setting current terminal's attributes");
-		exit( 1);
+		exit(1);
 	}
 
-	if (verbose)
-		printf( "Link on %s, speed is %d bauds\n", line, speed);
+	msg( "Link on %s, speed is %d bauds\n", line, speed);
+    
+    int d = 0;
+    printf(" Mounted: fd: %d, Drive %d arg: '%s', diskname: '%s'\n", 
+        imageFile[d].fd, d, imageFile[d].filename, imageFile[d].diskname);
+    d = 1;
+    if (imageFile[d].fd != -1) {
+        printf(" Mounted: fd: %d, Drive %d arg: '%s', diskname: '%s'\n", 
+            imageFile[d].fd, d, imageFile[d].filename, imageFile[d].diskname);
+    }
+    d = 2;
+    if (imageFile[d].fd != -1) {
+        printf(" Mounted: fd: %d, Drive %d arg: '%s', diskname: '%s'\n", 
+            imageFile[d].fd, d, imageFile[d].filename, imageFile[d].diskname);
+    }
+    d = 3;
+    if (imageFile[d].fd != -1) {
+        printf(" Mounted: fd: %d, Drive %d arg: '%s', diskname: '%s'\n", 
+            imageFile[d].fd, d, imageFile[d].filename, imageFile[d].diskname);
+    }
+    
+    // Testing option for the make tests run
+    if (exitOnLoadComplete) {
+        exit(0);
+    }
 
-	if (optind < argc) {
-		name = argv[ optind++];
-		if (optind < argc) {
-			fprintf( stderr, "Only one filename is allowed\n");
-			usage( *argv);
-			exit (1);
-		}
-	} else {
-		fprintf( stderr, "No file name ???\n");
-		usage( *argv);
-		exit( 1);
-	}
+    loop();
+}
 
-	// Load the file
-
-
-	getcwd( curdir, 255);
-
-	if (load_dsk( name) < 0)
-		exit( 1);
-
-	if (readonly) {
-		fprintf( stderr, "Flexnet can't start with a read-only file\n");
-		exit( 1);
-	}
+void loop() {
+	int command;
 
 	// Read command from flex side
 	
 	while (1) {
-		command = fgetc( serial);
+		command = fgetc(serial);
 		*param = 0;
 		switch (command) {
 			case 0x55:
 			case 0xAA:
-				fputc( command, serial);
-				if (verbose)
-					printf( "Initial sync or RESYNC command ($%02x)\n", command);
+				fputc(command, serial);
+				msg( "Initial sync or RESYNC command ($%02x)\n", command);
 				break;
 			case 'S':	// send a block 
 			case 's':	// FLEXNET use lower case
@@ -588,21 +613,18 @@ int main( int argc, char **argv)
 				break;
 			case 'V':	// Query MS-DOS drive letter - no use for Unix ;-)
 				getparam();
-				fputc( ACK, serial);
-				if (verbose)
-					printf( "Query (change) drive command\n");
+				fputc(ACK, serial);
+				msg( "Query (change) drive command\n");
 				break;
 			case '?':	// 
-				fputs( curdir, serial);
-				fputc( CR, serial);
-				fputc( ACK, serial);
-				if (verbose)
-					printf( "Query current directory (%s) command\n", param);
+				fputs(curdir, serial);
+				fputc(CR, serial);
+				fputc(ACK, serial);
+				msg( "Query current directory (%s) command\n", param);
 				break;
 			case 'Q':
-				fputc( ACK, serial);
-				if (verbose)
-					printf( "Quick check: is drive ready ? (unix: allways yes)\n");
+				fputc(ACK, serial);
+				msg("Quick check: is drive ready ? (unix: allways yes)\n");
 				break;
 			case 'A':	// list .dsk files
 				lstdsk();
@@ -618,35 +640,43 @@ int main( int argc, char **argv)
                 break;
 			case 'D':	// delete .dsk file (not yet implemented)
 				getparam();
-				fputc( NAK, serial);
-				if (verbose)
-					printf( "%s(%s) command (no action, reply NAK)\n",
+				fputc(NAK, serial);
+				msg("%s(%s) command (no action, reply NAK)\n",
 						command=='C' ? "RCREATE" : "RDELETE", param);
 				break;
 			case 'E':	// Flex leave
 				fputc (ACK, serial);
-				if (verbose)
-					printf( "Flexnet exit\n");
-				exit( 0);
+				msg("Flexnet exit\n");
+				exit(0);
 			case 'P':	// change directory -- param = path
 				getparam();
-				fputc (chngd() ? ACK : NAK, serial);
+				fputc(chngd() ? ACK : NAK, serial);
 				break;
 			case 'M':	// mount a new disk image
 				getparam();
-				if (rmount()) {
-					fputc( ACK, serial);
-					fputc( readonly ? 'R' : 'W', serial);
+				if (rmount(currentDrive)) {
+					fputc(ACK, serial);
+					fputc(readonly ? 'R' : 'W', serial);
 				} else
-					fputc( NAK, serial);
+					fputc(NAK, serial);
 				break;
 			case -1:
-				fprintf( stderr, "Serial line disappeared - Panic exit\n");
+				fprintf(stderr, "Serial line disappeared - Panic exit\n");
 				exit( 1);
 			default:	// WTF ? Something wrong happened... Just ignore...
-				if (verbose)
-					printf( "Unknown command 0x%02x (%c)\n", command, isprint( command)?command:0);
+				printf("Unknown command 0x%02x (%c)\n", 
+                        command, isprint( command) ? command : 0);
 				break;
 		}
 	}
 }
+
+void msg(const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    vfprintf(stdout, fmt, args);
+    va_end(args);
+}
+
