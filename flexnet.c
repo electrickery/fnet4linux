@@ -19,28 +19,7 @@
 	 along with this program; if not, write to the Free Software
 	 Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <termios.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <string.h>
-#include <ctype.h>
-#include <time.h>
-#include <getopt.h>
-#include <dirent.h>
-
-// Sector size for Flex floppy
-#define SECSIZE 256
-
-#define LF  0x0a
-#define CR  0x0d
-#define ACK 0x06
-#define NAK 0x15
-#define ESC 0x1B
+#include "flexnet.h"
 
 // Help message
 void usage( char *cmd) {
@@ -52,30 +31,12 @@ void usage( char *cmd) {
 	fprintf( stderr, " -v : print requests to the server and reply (debug)\n");
 }
 
-// Some global variables
-char line[32];			// serial line to use (/dev/ttyS0, /dev/ttyUSB0, etc.)
-int  speed = 0;			// serial line speed (19200 for Microbox on second ACIA)
-FILE *serial;			// serial line handler
-
-char param[128];		// Flexnet command parameters
-int ready;				// Disk image ready ?
-int readonly;			// Disk image readonly ?	
-char curdir[256];		// Current directory
-
-static int verbose = 0;
-
-char filename[256];		// flex disk image path
-char *diskname;			// flex disk name
-int fd;					// file handler
-uint8_t bloc[SECSIZE];	// current sector (for reading or writing)
-uint8_t nbtrk;			// nb of tracks on disk
-uint8_t nbsec;			// nb of sectors by track
-uint8_t track0l;		// nb of sectors on track 0
-
 // Convert track/sector to bloc number on the disc image
 
 int ts2blk( uint8_t ntrk, uint8_t nsec) {
-	if (ntrk > nbtrk || nsec > nbsec || (nsec == 0 && ntrk != 0)) {
+	if (ntrk > imageFile[0].nbtrk || 
+        nsec > imageFile[0].nbsec || 
+        (nsec == 0 && ntrk != 0)) {
 		return( -1);
 	}
 	if (ntrk == 0) {	    // track 0 is straitforward...
@@ -85,7 +46,7 @@ int ts2blk( uint8_t ntrk, uint8_t nsec) {
 			return (nsec - 1);
 		}
 	} else {
-		return track0l + (ntrk - 1) * nbsec + nsec - 1;
+		return imageFile[0].track0l + (ntrk - 1) * imageFile[0].nbsec + nsec - 1;
 	}
 }
 
@@ -128,43 +89,43 @@ int load_dsk( char *name) {
 	int last_trk_sec;	
 	int freesec; 
 
-	strncpy( filename, name, 256);
-	diskname = strrchr( filename, '/');
-	if (diskname == NULL)
-		diskname = filename;
+	strncpy( imageFile[0].filename, name, 256);
+	imageFile[0].diskname = strrchr( imageFile[0].filename, '/');
+	if (imageFile[0].diskname == NULL)
+		imageFile[0].diskname = imageFile[0].filename;
 	else
-		diskname++;
+		imageFile[0].diskname++;
 
-	if (stat( filename, &dsk_stat)) {
+	if (stat( imageFile[0].filename, &dsk_stat)) {
 		if (verbose)
-			perror( filename); 
+			perror( imageFile[0].filename); 
 		return -1;
 	}
 
 	// Open disk image
-	diskname = strrchr( filename, '/');
-	if (diskname == NULL)
-		diskname = filename;
+	imageFile[0].diskname = strrchr( imageFile[0].filename, '/');
+	if (imageFile[0].diskname == NULL)
+		imageFile[0].diskname = imageFile[0].filename;
 	else
-		diskname++;
+		imageFile[0].diskname++;
 	size = dsk_stat.st_size;
 	if (dsk_stat.st_mode & S_IWUSR) {
-		if ((fd = open( filename, O_RDWR)) < 0) {
+		if ((imageFile[0].fd = open( imageFile[0].filename, O_RDWR)) < 0) {
 			if (verbose)
-				perror( diskname);
+				perror( imageFile[0].diskname);
 			return -1;
 		}
 		readonly = 0;
 	} else {
-		if ((fd = open( filename, O_RDONLY)) < 0 ) {
+		if ((imageFile[0].fd = open( imageFile[0].filename, O_RDONLY)) < 0 ) {
 			if (verbose)
-				perror( diskname);
+				perror( imageFile[0].diskname);
 			return -1;
 		}
 		readonly = 1;
 	}
-	lseek( fd, SECSIZE*2, SEEK_SET);
-	if (read( fd, bloc, SECSIZE) != SECSIZE)
+	lseek( imageFile[0].fd, SECSIZE*2, SEEK_SET);
+	if (read( imageFile[0].fd, imageFile[0].bloc, SECSIZE) != SECSIZE)
 		return -1;
 
 	nb_sectors = size / SECSIZE;
@@ -175,60 +136,62 @@ int load_dsk( char *name) {
 	}
 
 	if (verbose)
-		printf( "Opening %s (%u sectors)\n", diskname, nb_sectors);
+		printf( "Opening %s (%u sectors)\n", imageFile[0].diskname, nb_sectors);
 
 	// Not a flex disk ?
-	if (getname( bloc + 0x10, label, 0) < 0 || bloc[0x26] == 0 || bloc[0x27] == 0) {
+	if (getname( imageFile[0].bloc + 0x10, label, 0) < 0 || 
+                imageFile[0].bloc[0x26] == 0 ||
+                imageFile[0].bloc[0x27] == 0) {
 		fprintf( stderr, "Not a valid Flex disk image: ");
 		return -1;
 	}
 
-	volnum = bloc[0x1b]*256 + bloc[0x1c];
+	volnum = imageFile[0].bloc[0x1b]*256 + imageFile[0].bloc[0x1c];
 	// Size of disk & free sector list
-	nbtrk = bloc[0x26];
-	nbsec = bloc[0x27];
-	freesec = bloc[0x21]*256 + bloc[0x22];
+	imageFile[0].nbtrk = imageFile[0].bloc[0x26];
+	imageFile[0].nbsec = imageFile[0].bloc[0x27];
+	freesec = imageFile[0].bloc[0x21]*256 + imageFile[0].bloc[0x22];
 
 	// Too much free sectors for the disk ?
-	if (freesec > nbtrk * nbsec && verbose)
+	if (freesec > imageFile[0].nbtrk * imageFile[0].nbsec && verbose)
 		printf( "Warning: Number of free sectors bigger than disk size\n");
 
 	// Print info about the disk
 	if (verbose)
 		printf( "Flex Volume name: '%s', volume number %d (%d tracks, %d sectors/track)\n",
-			label, volnum, nbtrk+1, nbsec);
+			label, volnum, imageFile[0].nbtrk+1, imageFile[0].nbsec);
 
 	// Try to guess disk geometry
-	if ((nbtrk+1) * nbsec == nb_sectors) {
+	if ((imageFile[0].nbtrk+1) * imageFile[0].nbsec == nb_sectors) {
 		if (verbose) {
 			printf( "Looks like a Single Density disk\n");
 		}
-		track0l = nbsec;
+		imageFile[0].track0l = imageFile[0].nbsec;
 	} else {
-		track0l = nb_sectors - nbtrk * nbsec;
-		if ((nbsec >= 36 && track0l == 20) ||
-			(nbsec == 18 && track0l == 10) ||
-			(track0l == nbsec/2)) {
+		imageFile[0].track0l = nb_sectors - imageFile[0].nbtrk * imageFile[0].nbsec;
+		if ((imageFile[0].nbsec >= 36 && imageFile[0].track0l == 20) ||
+			(imageFile[0].nbsec == 18 && imageFile[0].track0l == 10) ||
+			(imageFile[0].track0l == imageFile[0].nbsec/2)) {
 			if (verbose)
 	  			printf ( "Looks like a Double Density disk with Single Density track 0 of %d sectors\n",
-	    			track0l);
-		} else if (track0l > nbsec) {
+	    			imageFile[0].track0l);
+		} else if (imageFile[0].track0l > imageFile[0].nbsec) {
 			// Weird geometry... but can happen when disks are in EEPROM
 			if (verbose)
 	  			printf( "Unknown geometry: %d tracks of %d sectors + first track of %d sectors !\n",
-	    			nbtrk, nbsec, track0l);
-			track0l = nbsec;
-			nbtrk++;
-			last_trk_sec = nb_sectors - (nbtrk-1) * nbsec - track0l;
+	    			imageFile[0].nbtrk, imageFile[0].nbsec, imageFile[0].track0l);
+			imageFile[0].track0l = imageFile[0].nbsec;
+			imageFile[0].nbtrk++;
+			last_trk_sec = nb_sectors - (imageFile[0].nbtrk-1) * imageFile[0].nbsec - imageFile[0].track0l;
 			if (verbose)    
 	  			printf( " => Using normal %d sector track 0, add a %d%s incomplete track of %d sectors\n",
-	    			track0l, nbtrk, "th", last_trk_sec);
-		} else if (track0l > nbsec/2 && track0l < nbsec) {
+	    			imageFile[0].track0l, imageFile[0].nbtrk, "th", last_trk_sec);
+		} else if (imageFile[0].track0l > imageFile[0].nbsec/2 && imageFile[0].track0l < imageFile[0].nbsec) {
 			if(verbose)
 	  			printf ( "Looks like a Double Density disk with Single Density track 0 of %d sectors\n",
-	    			track0l);
+	    			imageFile[0].track0l);
 		} else {
-			nbtrk -= (((nbtrk * nbsec - nb_sectors) / nbsec) + 1);
+			imageFile[0].nbtrk -= (((imageFile[0].nbtrk * imageFile[0].nbsec - nb_sectors) / imageFile[0].nbsec) + 1);
 			// This is generaly no good, trying to guess end of track 0
 			fprintf( stderr, "ERROR: Disk image too small... unusual geometry or truncated ?\n");
 			return -1;
@@ -253,10 +216,10 @@ void getparam() {
 	param[i] = 0;
 }
 
-// Chercksum for disk bloc transfert
+// Checksum for disk bloc transfer
 
 int checksum( uint8_t *data) {
-	int j, chks;
+	int chks;
 
 	chks = 0;
 	for (int i = 0; i < 256; i++)
@@ -291,36 +254,38 @@ void sndblk() {
 	if ((pos = SECSIZE * ts2blk( ntrk, nsec)) < 0) {
 		retval = 0;
 	} else {
-		if (lseek( fd, pos, SEEK_SET) != pos)
+		if (lseek( imageFile[0].fd, pos, SEEK_SET) != pos)
 			retval = 0;
-		if (read( fd, bloc, SECSIZE) != SECSIZE)
+		if (read( imageFile[0].fd, imageFile[0].bloc, SECSIZE) != SECSIZE)
 			retval = 0;
 	}
-	if (retval == 0)
-		for( int i = 0; i< 256; i++)
-			bloc[i] = 0;
-	if (verbose)
+	if (retval == 0) {
+		for( int i = 0; i< 256; i++) 
+			imageFile[0].bloc[i] = 0;
+    }
+	if (verbose) {
 		if (retval) 
 			printf( "Bloc dsk %d [0x%02X/0x%02X] (pos = %d) read", drv, ntrk, nsec, pos);
 		else
 			printf( "Fail to read bloc dsk %d [0x%02X/0x%02X] (pos = %d)", drv, ntrk, nsec, pos);
-
-	chks = checksum( bloc);
+    }
+	chks = checksum( imageFile[0].bloc);
 	lsb = chks & 0xFF;
 	msb = (chks >> 8) & 0xFF;
 	for( int i = 0; i< 256; i++)
-		fputc( bloc[i], serial);
+		fputc( imageFile[0].bloc[i], serial);
 	fputc( msb, serial);
 	fputc( lsb, serial);
 
 	retval = fgetc( serial);
-	if (verbose)
+	if (verbose) {
 		if (retval == NAK)
 			printf( "... transmission failed\n");
 		else if (retval == ACK)
 			printf ("... transmission OK\n");
 		else
 			printf ("... return value not expected : 0x%02X\n", retval);
+    }
 }
 
 // Command R : Receive a disk sector and write in on disk image
@@ -330,28 +295,28 @@ int rcvblk() {
 	int retval;
 	int pos;
 	uint8_t nsec, ntrk;
-	int drv, i;
+	int i;
 
-	drv = fgetc( serial);
+//	int drv = fgetc( serial);
 	ntrk = fgetc( serial);
 	nsec = fgetc( serial);
 	pos = SECSIZE * ts2blk( ntrk, nsec);
 
 	for (i = 0; i <256; i++)
-		bloc[i] = fgetc( serial);
+		imageFile[0].bloc[i] = fgetc( serial);
 	msb = fgetc( serial);
 	lsb = fgetc( serial);
 	retval = 1;
 
-	if ((chks = checksum( bloc)) == msb * 256 + lsb) {
+	if ((chks = checksum( imageFile[0].bloc)) == msb * 256 + lsb) {
 		if (pos < 0)
 			retval = 0;
 		else {
 			if (ready == 0)
 				return (retval = 0);
-			if (lseek( fd, pos, SEEK_SET) != pos)
+			if (lseek( imageFile[0].fd, pos, SEEK_SET) != pos)
 				retval = 0;
-			if (write( fd, bloc, SECSIZE) != SECSIZE)
+			if (write( imageFile[0].fd, imageFile[0].bloc, SECSIZE) != SECSIZE)
 				retval = 0;
 		}
 	} else {
@@ -359,14 +324,15 @@ int rcvblk() {
 		if (verbose) {
 			printf( "Bad checksum (0x%04X instead of 0x%04X)\n", msb * 256 + lsb, chks);
 			for (i = 0; i< 256; i++)
-				printf ("%c0x%02x", i%16?' ':'\n', bloc[i]);
+				printf ("%c0x%02x", i%16?' ':'\n', imageFile[0].bloc[i]);
 		}
 	}
-	if (verbose)
+	if (verbose) {
 		if (retval)
 			printf( "Bloc [0x%02X/0x%02X] (pos = %d) written\n", ntrk, nsec, pos);
 		else
 			printf( "Fail to write bloc [0x%02X/0x%02X] (pos = %d)\n", ntrk, nsec, pos);
+    }
 	return retval;
 }
 
@@ -390,21 +356,21 @@ int chngd() {
 // RMOUNT command
 
 int rmount() {
-	char filename[256];
+	char rfilename[256];
 
-	close( fd);
+	close( imageFile[0].fd);
 	if (verbose)
-		printf( "closing %s\n", diskname);
+		printf( "closing %s\n", imageFile[0].diskname);
 
 	ready = 1;
-	strncpy( filename, param, 255);
-	strncat( filename, ".DSK", 255);	// Rmount don't put the extension
-	if (load_dsk( filename) < 0) {
+	strncpy( rfilename, param, 255);
+	strncat( rfilename, ".DSK", 255);	// Rmount don't put the extension
+	if (load_dsk( rfilename) < 0) {
 		if (verbose)
 			printf( "trying with lowercase...\n");
-		strncpy( filename, param, 255);
-		strncat( filename, ".dsk", 255);
-		if (load_dsk( filename) < 0)
+		strncpy( rfilename, param, 255);
+		strncat( rfilename, ".dsk", 255);
+		if (load_dsk( rfilename) < 0)
 			ready = 0;
 	}
 	return ready;
@@ -412,7 +378,7 @@ int rmount() {
 
 // RDIR command
 
-int lstdsk() {
+void lstdsk() {
 	struct dirent *entry;
 	DIR *dirp;
 	int reply;
@@ -456,7 +422,7 @@ int lstdsk() {
 
 // RLIST command
 
-int lstdir() {
+void lstdir() {
 	struct dirent *entry;
 	struct stat statbuf;
 	DIR *dirp;
@@ -512,9 +478,9 @@ int main( int argc, char **argv)
 {
 	int opt;
 	char *name;
-	struct stat dsk_stat;
+//	struct stat dsk_stat;
 	int command;
-	int flags;
+//	int flags;
 	struct termios linespec;
 	int idlnk;
 
@@ -618,7 +584,7 @@ int main( int argc, char **argv)
 				break;
 			case 'R':	// receive a bloc
 			case 'r':	// FLEXNET use lower case
-				fputc(rcvblk()?ACK:NAK, serial);
+				fputc(rcvblk() ? ACK : NAK, serial);
 				break;
 			case 'V':	// Query MS-DOS drive letter - no use for Unix ;-)
 				getparam();
@@ -649,12 +615,13 @@ int main( int argc, char **argv)
 				getparam();
 				getparam();
 				getparam();
+                break;
 			case 'D':	// delete .dsk file (not yet implemented)
 				getparam();
 				fputc( NAK, serial);
 				if (verbose)
 					printf( "%s(%s) command (no action, reply NAK)\n",
-						command=='C'?"RCREATE":"RDELETE", param);
+						command=='C' ? "RCREATE" : "RDELETE", param);
 				break;
 			case 'E':	// Flex leave
 				fputc (ACK, serial);
@@ -663,13 +630,13 @@ int main( int argc, char **argv)
 				exit( 0);
 			case 'P':	// change directory -- param = path
 				getparam();
-				fputc (chngd()?ACK:NAK, serial);
+				fputc (chngd() ? ACK : NAK, serial);
 				break;
 			case 'M':	// mount a new disk image
 				getparam();
 				if (rmount()) {
 					fputc( ACK, serial);
-					fputc( readonly?'R':'W', serial);
+					fputc( readonly ? 'R' : 'W', serial);
 				} else
 					fputc( NAK, serial);
 				break;
