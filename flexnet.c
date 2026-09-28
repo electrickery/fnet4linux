@@ -1,5 +1,7 @@
 /* flexnet.c -- Linux NetPC server for Flex systems
 	 Copyright (C) 2025 Michel Wurtz - mjwurtz@gmail.com
+	 
+	 Modification for multi-disk, 2026 Fred Jan Kraan fjkraan@electrickery.nl
 
 	 Server using the NetPC protocol used in Netpc35 (Bjarne Bäckstrom
 	 and Ron Anderson). This software doesn't use any code from the
@@ -23,13 +25,14 @@
 
 // Help message
 void usage( char *cmd) {
-	fprintf( stderr, "Usage: %s [-h] => this help\n", cmd);
-	fprintf( stderr, "       %s [-v] -d <device> -s <speed> disk_image\n", cmd);
-	fprintf( stderr, "Options:\n");
-	fprintf( stderr, " -d <device> : serial line to use\n");
-	fprintf( stderr, " -s <speed> : baudrate to use\n");
-	fprintf( stderr, " -v : print requests to the server and reply (debug)\n");
-    fprintf( stderr, " -t : for testing only; exit(0) after loading complete\n");
+	fprintf(stderr, "Usage: %s [-h] => this help\n", cmd);
+	fprintf(stderr, "       %s [-v] -d <device> -s <speed> -[0123] <disk_image>\n", cmd);
+	fprintf(stderr, "Options:\n");
+	fprintf(stderr, " -d <device> : serial line to use\n");
+	fprintf(stderr, " -s <speed> : baudrate to use\n");
+	fprintf(stderr, " -v : print requests to the server and reply (debug)\n");
+    fprintf(stderr, " -t : for testing only; exit(0) after loading complete\n");
+    fprintf(stderr, " -0, -1, -2 or -3 <disk_image> : provide image name\n");
 }
 
 // Convert track/sector to bloc number on the disc image
