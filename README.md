@@ -18,6 +18,11 @@ array, the original code becomes multi-disk.
 is replaced by up to four options '-0, -1, -2 and -3) each with an argument.
 * Added a makefile.
 
+## Info on the hardware used
+
+The page describing the hardware and modifications to the monitor and flex drivers is here:
+https://electrickery.nl/comp/more6809/keesFlex/.
+
 ## ToDo
 
 What remains is checking the other netPC/FlexNet commands for proper working with
