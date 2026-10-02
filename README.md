@@ -31,5 +31,9 @@ more images and cleanup.
 And update the documentation! In the meantime, here an example:
 
     flexnet -d /dev/ttyUSB2 -s 9600 -v -0 disks/FLEXCMI.DSDD80-5f2.IMA -1 'disks/EDITSRC.DSK' -2 'disks/GAMES.DSK'
+    
+Here an image of the target rack in 'development mode'
+
+![Kees Flex rack with CPUXXCMI/CPU09SR4 boards and an attached Rom Emulator](rackInDevelopmentMode.jpg)
 
 fjkraan@electrickery.nl
