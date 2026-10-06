@@ -1,6 +1,6 @@
 # fnet4linux
 
-Based on Michael Wurtz' Fnet4linux code.
+Based on Michael Würtz' Fnet4linux code.
 
 # What is it?
 
@@ -35,5 +35,10 @@ And update the documentation! In the meantime, here an example:
 Here an image of the target rack in 'development mode'
 
 ![Kees Flex rack with CPUXXCMI/CPU09SR4 boards and an attached Rom Emulator](rackInDevelopmentMode.jpg)
+
+There is another FlexNet version derived from Michael Würtz code at: https://github.com/linuxha/flexnet.git.
+At the time of writing, the multi-drive version was not working.
+
+The original NetPC/FlexNet code can be found at http://www.flexusergroup.com/flexusergroup/...
 
 fjkraan@electrickery.nl
