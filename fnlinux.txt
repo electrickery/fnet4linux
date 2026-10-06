@@ -1,0 +1,101 @@
+2025-04-30 18:42                                                      Page 1
+
+                               Flexnet for Unix
+                               ================
+                               
+
+Supplement to the Manual rev 1.00 -- 30 nov 2002 by Bjarne Bäcksróm and Ron 
+Anderson with additions by Joel Setton, Ron Anderson, and Mickey Ferguson.
+
+By Michael J. Würtz -- 30 apr 2025
+
+Introduction
+------------
+
+The new operating systems like Linux, Free~ or OpenBSD, and Windows don’t use
+floppy disc drives. On the other hand, there is now software that can format
+and manage disk images on the PC side.
+
+The use and validity of Flexnet utilities are not quite the same, hence the
+update of this manual. The Flex sources were not modified, except for some
+minor cosmetic changes, but some are now redundant.
+
+The idea was to have a Linux server easy to port to any other Posix compliant
+OS, without changing anything on the Flex side, to ensure the compatibility
+with older Flex systems using Flexnet. It’s also in pure C, for portability.
+
+The server may be run in a terminal window, or automatically launched at the
+boot time and stay on the background. Tt mist run before Flexnet on the Flex
+side.
+
+The server verify the validity of the disk image and tries to guess the disk
+image format, ao you can access double density images without modifying the
+first track like you should do for some other utilities.
+
+Usage is :
+
+flexnet [-v] -d <device> -a <speed> <Flex image>
+
+-v print a lot of info about the exchanges
+
+the speed must be expressed in bauds
+
+the device is the serial line (/dev/ttySx, /dev/ttyUSBx, etc.)
+
+Under Flex, the command (netpc, netdrv, flexnet, etc.) MUST have the drive #
+to be used as a parameter. Failing to do that could leave some garbage on the
+serial line, hence forbiding the initial handshake to work properly.
+
+USER’S MANUAL MODIFICATIONS
+---------------------------
+
+On a global rule, don’t forget that Unix names are case sensitive...
+
+Sometimes, an erroneous Flex command (Like RMOUNTing a non existent file) can
+desynchronise the conmunication with the server, and even RESYNC fails.
+I have noticed that RDRIVE or RWHICA can restore it in the majority of cases.
+
+
+2025-04-30 18:42                                                       Page 2
+
+RCD Remote Change Directory
+
+        Work the same, but Unix syntax applies.
+
+RCREATE Remote Create
+        The RCREATE command is not implemented. Flex dialog works, but this
+        command allways returns : "Error message received from NETPC.”
+
+RDELETE Remote Delete
+        DELETE is not implemented. Flex dialog works, but this
+        command allways returns : "Error in processing file.”
+
+RDIR Remote Directory
+        Works the same, but Linux doesn’t provide any details (size, etc.) of
+        the files. Both .DSK and .dsk files are recognised.
+
+RDRIVE Change drive
+        DRIVE ignore the drive letter parameter and just reply OK.
+        If no drive letter is specified, DRIVE works like RWHICH and can be
+        replaced by RWHTCH.
+
+RESYNC Re-SYNChronize
+
+        Works the game.
+
+RLIST Remote Liat
+
+        Works the game.
+
+RMOUNT Remote Mount
+       Works the same, but Linux recognise both .DsK and -dsk files, even if
+       a .DSK extenaion is given. if two Linux files have the aame name, but
+       a different extension (ex:foo.DSK and foo.dsk), the first is mounted.
+
+REXIT Remote Exit
+
+        Works the same.
+
+RWHICH Display current directory
+
+        Works the same.
