@@ -39,6 +39,8 @@ Here an image of the target rack in 'development mode'
 There is another FlexNet version derived from Michael Würtz code at: https://github.com/linuxha/flexnet.git.
 At the time of writing, the multi-drive version was not working.
 
+More Windows oriented source code is here: https://github.com/mevenson/FLEXNet.
+
 The original NetPC/FlexNet code can be found at http://www.flexusergroup.com/flexusergroup/...
 
 fjkraan@electrickery.nl

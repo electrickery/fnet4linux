@@ -4,7 +4,7 @@
                                ================
                                
 
-Supplement to the Manual rev 1.00 -- 30 nov 2002 by Bjarne Bäcksróm and Ron 
+Supplement to the Manual rev 1.00 -- 30 nov 2002 by Bjarne Bäcksröm and Ron 
 Anderson with additions by Joel Setton, Ron Anderson, and Mickey Ferguson.
 
 By Michael J. Würtz -- 30 apr 2025
@@ -59,7 +59,6 @@ I have noticed that RDRIVE or RWHICA can restore it in the majority of cases.
 2025-04-30 18:42                                                       Page 2
 
 RCD Remote Change Directory
-
         Work the same, but Unix syntax applies.
 
 RCREATE Remote Create
@@ -80,12 +79,10 @@ RDRIVE Change drive
         replaced by RWHTCH.
 
 RESYNC Re-SYNChronize
+        Works the same.
 
-        Works the game.
-
-RLIST Remote Liat
-
-        Works the game.
+RLIST Remote List
+        Works the same.
 
 RMOUNT Remote Mount
        Works the same, but Linux recognise both .DsK and -dsk files, even if
@@ -93,9 +90,7 @@ RMOUNT Remote Mount
        a different extension (ex:foo.DSK and foo.dsk), the first is mounted.
 
 REXIT Remote Exit
-
         Works the same.
 
 RWHICH Display current directory
-
         Works the same.
