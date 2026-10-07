@@ -17,7 +17,7 @@ then
 fi
 if [ "$IMAGE2" != "" ]
 then
-    OPT2=`echo-2 $IMAGE2`
+    OPT2=`echo -2 $IMAGE2`
 fi
 if [ "$IMAGE3" != "" ]
 then
