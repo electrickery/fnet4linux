@@ -130,6 +130,7 @@ int load_dsk(char *name, int driveNo) {
 		}
 		readonly = 1;
 	}
+    // Load track 0, sector 2, the SIR
 	lseek( imageFile[driveNo].fd, SECSIZE*2, SEEK_SET);
 	if (read( imageFile[driveNo].fd, bloc, SECSIZE) != SECSIZE)
 		return -1;
