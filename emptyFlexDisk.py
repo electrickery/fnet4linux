@@ -12,7 +12,7 @@
 #  <volumeNumber> the volume number is two characters 
 #
 
-version = "0.1"
+version = "0.2"
 
 import sys
 import datetime
@@ -28,9 +28,9 @@ else:
     sirVolName = b'EMPTY\00\00\00\00\00\00'
     
 if len(sys.argv) > 3:
-    sirVolName = bytes((sys.argv[3])[0:3], "utf-8")
+    sirVolNum = bytes((sys.argv[3])[0:3], "utf-8")
 else:
-    sirVolName = b'EMPTY\00\01'
+    sirVolNum = b'\00\01'
     
 today = datetime.datetime.now()
 
@@ -47,7 +47,7 @@ totalSecMSB = int(totalSectors / 256)
 totalSecLSB = int((totalSectors - totalSecMSB * 256) % 256)
 
 #sirVolName = b'EMPTY      '     # $10 - $1C
-sirVolNum = b'\x00\x01'         # $1D - $1E
+#sirVolNum = b'\x00\x01'         # $1D - $1E
 sirFirstFreeTrk = b'\x01'       # $1F
 sirFirstFreeSec = b'\x01'       # $20
 sirFreeSecCntM = bytes([totalSecMSB])  # b'\x0b'     # $21
